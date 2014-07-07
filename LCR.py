@@ -1,9 +1,21 @@
 import math
 
+class Container(object):
+    
+    def __init__(self, **kwargs):
+        for (k,v) in kwargs.iteritems():
+            setattr(self, k, v)
+
 class Component(object):
+    '''
+    Component class. All component types (R, C, L, etc) are subclassed from this.
+    '''
+
     SUFFIX = ''
     SUFFIXES = ['', 'F', 'f', 'h', 'H', 'Hz', 'hz']
     TYPES = {
+            'T' : 1000000000000.0, 
+            'G' : 1000000000.0, 
             'M' : 1000000.0, 
             'K' : 1000.0, 
             'k' : 1000.0,
@@ -14,10 +26,14 @@ class Component(object):
     }
 
     def __init__(self, value):
-        if isinstance(value, str):
-            self.value = self._str2float(value)
-        else:
-            self.value = float(value)
+        '''
+        Class constructor.
+
+        @value - A int, float or string value (e.g., .000000000001 or '1pf').
+
+        Returns None.
+        '''
+        self.value = self._value2float(value)
         
     def __float__(self):
         return self.value
@@ -37,7 +53,14 @@ class Component(object):
 
         return "%s%s%s" % (display_value.strip('0'), display_key, self.SUFFIX)
 
-    def _str2float(self, value):
+    def _value2float(self, value):
+        '''
+        Converts a user-specified value to a float.
+
+        @value - A int, float or string value (e.g., .000000000001 or '1pf').
+
+        Returns a float value.
+        '''
         try:
             return float(value)
         except ValueError:
@@ -55,33 +78,94 @@ class Component(object):
 
         raise Exception("Invalid value!")
 
-    def w(self, F):
-        if isinstance(F, Component):
-            freq = F.value
+    def w(self, Fo):
+        '''
+        Omega function.
+
+        @Fo - The frequency at which to calculate omega.
+              May be a literal value, or an F object.
+
+        Returns 2*math.pi*Fo.
+        '''
+        if isinstance(Fo, Component):
+            freq = Fo.value
         else:
-            freq = F
+            freq = Fo
 
         return (2*math.pi*freq)
 
     def _sum(self, components):
+        '''
+        Returns a sum of the specified components (e.g., resistors in series).
+
+        @components - A list of component objects.
+
+        Returns a float sum of the component values.
+        '''
         summ = 0.0
         for c in components:
             summ += c.value
         return summ
 
     def _inverse_sum(self, components):
+        '''
+        Returns the inverse sum of the specified components 
+        (e.g., resistors in parallel).
+
+        @components - A list of component objects.
+
+        Returns a float sum of the component values.
+        '''
         summ = 0.0
         for c in components:
             summ += (1/c.value)
         return (1/summ)
 
-    def reactance(self, F):
-       return R(0)
+    def reactance(self, Fo):
+        '''
+        Calculates the reactance at the specified frequency.
+        Should be overridden by the subclass.
+
+        @Fo - The frequency at which to calculate omega.
+              May be a literal value, or an F object.
+        
+        Returns an R object.
+        '''
+        return R(0)
+
+    def series(self, components):
+        '''
+        Calculates the series impedance of the specified components.
+        Should be overridden by the subclass.
+
+        @components - A list of component objects.
+
+        Returns an R object.
+        '''
+        return R(0)
+
+    def parallel(self, components):
+        '''
+        Calculates the parallel impedance of the specified components.
+        Should be overridden by the subclass.
+
+        @components - A list of component objects.
+
+        Returns an R object.
+        '''
+        return R(0)
 
 class F(Component):
+    '''
+    Wrapper class for frequency values.
+    Only purpose is to simplify specifying frequencies (e.g., in MHz, mHz, GHz, etc).
+    '''
     SUFFIX = 'Hz'
      
 class R(Component):
+    '''
+    Wrapper class for resistor values.
+    '''
     SUFFIX = ''
 
     def series(self, components):
@@ -91,10 +175,13 @@ class R(Component):
         return R(self._inverse_sum(components))
 
 class C(Component):
+    '''
+    Wrapper class for capacitance values.
+    '''
     SUFFIX = 'F'
 
-    def reactance(self, F):
-        return R(1 / (self.w(F) * self.value))
+    def reactance(self, Fo):
+        return R(1 / (self.w(Fo) * self.value))
     
     def series(self, components):
         return C(self._inverse_sum(components))
@@ -103,10 +190,13 @@ class C(Component):
         return C(self._sum(components))
 
 class L(Component):
+    '''
+    Wrapper class for inductance values.
+    '''
     SUFFIX = 'L'
 
-    def reactance(self, F):
-        return R(self.w(F) * self.value)
+    def reactance(self, Fo):
+        return R(self.w(Fo) * self.value)
     
     def series(self, components):
         return L(self._sum(components))
@@ -115,7 +205,10 @@ class L(Component):
         return L(self._inverse_sum(components))
 
 class Circuit(object):
-   
+    '''
+    Class for calculating component values in circuits.
+    '''
+
     @staticmethod 
     def parallel(*components):
         if len(set([x.SUFFIX for x in components])) != 1:
@@ -131,15 +224,15 @@ class Circuit(object):
         return components[0].series(components)
 
     @staticmethod 
-    def series2parallel(Rs, Cs, F):
-        Q = 1 / (S.w(F) * float(Rs) * float(Cs))
+    def series2parallel(Rs, Cs, Fo):
+        Q = 1 / (Cs.w(Fo) * float(Rs) * float(Cs))
         Rp = R(float(Rs) * (1 + (Q**2)))
         Cp = C(float(Cs) * (Q**2 / (1 + Q**2)))
         return (Rp, Cp)
 
     @staticmethod 
-    def parallel2series(Rp, Cp, F):
-        Q = Cp.w(F) * float(Cp.value) * float(Rp.value)
+    def parallel2series(Rp, Cp, Fo):
+        Q = Cp.w(Fo) * float(Cp.value) * float(Rp.value)
         Rs = R(float(Rp) * (1 / (1 + Q**2)))
         Cs = C(float(Cp) * ((1 + Q**2) / Q**2))
         return (Rs, Cs)
