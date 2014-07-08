@@ -29,7 +29,7 @@ class Component(object):
     MIN_VALUE = 1.0
     MAX_VALUE = 10000.0
 
-    def __init__(self, value):
+    def __init__(self, value=0):
         '''
         Class constructor.
 
@@ -221,6 +221,10 @@ class Circuit(object):
     Class for calculating component values in circuits.
     '''
 
+    @staticmethod
+    def w(Fo):
+        return Component(Component().w(Fo))
+
     @staticmethod 
     def parallel(*components):
         if len(set([x.SUFFIX for x in components])) != 1:
@@ -237,14 +241,14 @@ class Circuit(object):
 
     @staticmethod 
     def series2parallel(Rs, Cs, Fo):
-        Q = 1 / (Cs.w(Fo) * float(Rs) * float(Cs))
+        Q = 1 / (self.w(Fo) * float(Rs) * float(Cs))
         Rp = R(float(Rs) * (1 + (Q**2)))
         Cp = C(float(Cs) * (Q**2 / (1 + Q**2)))
         return (Rp, Cp)
 
     @staticmethod 
     def parallel2series(Rp, Cp, Fo):
-        Q = Cp.w(Fo) * float(Cp.value) * float(Rp.value)
+        Q = self.w(Fo) * float(Cp.value) * float(Rp.value)
         Rs = R(float(Rp) * (1 / (1 + Q**2)))
         Cs = C(float(Cp) * ((1 + Q**2) / Q**2))
         return (Rs, Cs)
