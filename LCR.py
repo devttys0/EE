@@ -12,18 +12,22 @@ class Component(object):
     '''
 
     SUFFIX = ''
-    SUFFIXES = ['', 'F', 'f', 'h', 'H', 'Hz', 'hz']
+    SUFFIXES = ['', 'V', 'v', 'F', 'f', 'h', 'H', 'Hz', 'hz']
     TYPES = {
             'T' : 1000000000000.0, 
             'G' : 1000000000.0, 
             'M' : 1000000.0, 
             'K' : 1000.0, 
             'k' : 1000.0,
+            ''  : 1.0,
             'm' : .001, 
             'u' : .000001, 
             'n' : .000000001, 
             'p' : .000000000001,
     }
+    ALLOWED_TYPES = TYPES
+    MIN_VALUE = 1.0
+    MAX_VALUE = 10000.0
 
     def __init__(self, value):
         '''
@@ -41,17 +45,17 @@ class Component(object):
     def __str__(self):
         display_key = ''
         display_value = "%.2f" % self.value
-        
+         
         for key in sorted(self.TYPES, key=self.TYPES.get):
-            if isinstance(self, R) and self.TYPES[key] not in ['M', 'K', 'k']:
+            if key not in self.ALLOWED_TYPES:
                 continue
             value = self.value / self.TYPES[key]
-            if value >= 1.0 and value < 10000.0:
+            if value >= self.MIN_VALUE and value < self.MAX_VALUE:
                 display_key = key
                 display_value = "%.2f" % value
                 break
 
-        return "%s%s%s" % (display_value.strip('0'), display_key, self.SUFFIX)
+        return "%s%s%s" % (display_value.strip('0').strip('.'), display_key, self.SUFFIX)
 
     def _value2float(self, value):
         '''
@@ -71,8 +75,11 @@ class Component(object):
                 for suffix in self.SUFFIXES:
                     metric = mtype + suffix
 
-                    if value.endswith(metric):
-                        return (float(value.replace(metric, '')) * conversion)
+                    if metric and value.endswith(metric):
+                        try:
+                            return (float(value.replace(metric, '')) * conversion)
+                        except ValueError:
+                            continue
         else:
             raise Exception("Invalid suffix '%s'!" % str(self.SUFFIX))
 
@@ -155,6 +162,10 @@ class Component(object):
         '''
         return R(0)
 
+class V(Component):
+    SUFFIX = 'V'
+    MAX_VALUE = 1000.0
+
 class F(Component):
     '''
     Wrapper class for frequency values.
@@ -167,6 +178,7 @@ class R(Component):
     Wrapper class for resistor values.
     '''
     SUFFIX = ''
+    ALLOWED_TYPES = ['M', 'k', 'K']
 
     def series(self, components):
         return R(self._sum(components))
@@ -193,7 +205,7 @@ class L(Component):
     '''
     Wrapper class for inductance values.
     '''
-    SUFFIX = 'L'
+    SUFFIX = 'H'
 
     def reactance(self, Fo):
         return R(self.w(Fo) * self.value)
@@ -236,4 +248,8 @@ class Circuit(object):
         Rs = R(float(Rp) * (1 / (1 + Q**2)))
         Cs = C(float(Cp) * ((1 + Q**2) / Q**2))
         return (Rs, Cs)
+
+    @staticmethod
+    def divider(R1, R2, Vcc):
+        return V(Vcc.value * (R2.value / (R1.value + R2.value)))
 
