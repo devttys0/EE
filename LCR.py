@@ -2,7 +2,12 @@ import math
 
 class Container(object):
     
+    DEFAULTS = {}
+
     def __init__(self, **kwargs):
+        for (k,v) in self.DEFAULTS.iteritems():
+            setattr(self, k, v)
+
         for (k,v) in kwargs.iteritems():
             setattr(self, k, v)
 
@@ -29,16 +34,22 @@ class Component(object):
     MIN_VALUE = 1.0
     MAX_VALUE = 10000.0
 
-    def __init__(self, value=0):
+    def __init__(self, value=0, parasitics=None):
         '''
         Class constructor.
 
-        @value - A int, float or string value (e.g., .000000000001 or '1pf').
+        @value      - A int, float or string value (e.g., .000000000001 or '1pf').
+        @parasitics - An instance of the Parasitics class.
 
         Returns None.
         '''
         self.value = self._value2float(value)
-        
+        self.parasitics = parasitics
+        self._init()
+
+    def _init(self):
+        return None
+
     def __float__(self):
         return self.value
 
@@ -55,7 +66,11 @@ class Component(object):
                 display_value = "%.2f" % value
                 break
 
-        return "%s%s%s" % (display_value.strip('0').strip('.'), display_key, self.SUFFIX)
+        display_value = display_value.strip('0')
+        if display_value.endswith('.'):
+            display_value = display_value[:-1]
+
+        return "%s%s%s" % (display_value, display_key, self.SUFFIX)
 
     def _value2float(self, value):
         '''
@@ -84,22 +99,6 @@ class Component(object):
             raise Exception("Invalid suffix '%s'!" % str(self.SUFFIX))
 
         raise Exception("Invalid value!")
-
-    def w(self, Fo):
-        '''
-        Omega function.
-
-        @Fo - The frequency at which to calculate omega.
-              May be a literal value, or an F object.
-
-        Returns 2*math.pi*Fo.
-        '''
-        if isinstance(Fo, Component):
-            freq = Fo.value
-        else:
-            freq = Fo
-
-        return (2*math.pi*freq)
 
     def _sum(self, components):
         '''
@@ -162,6 +161,12 @@ class Component(object):
         '''
         return R(0)
 
+    def series2parallel(self, *args, **kwargs):
+        return None
+
+    def parallel2series(self, *args, **kwargs):
+        return None
+
 class V(Component):
     SUFFIX = 'V'
     MAX_VALUE = 1000.0
@@ -169,10 +174,15 @@ class V(Component):
 class F(Component):
     '''
     Wrapper class for frequency values.
-    Only purpose is to simplify specifying frequencies (e.g., in MHz, mHz, GHz, etc).
     '''
     SUFFIX = 'Hz'
-     
+
+    def _init(self):
+        self.w = 2*math.pi*self.value
+
+class Crystal(Component):
+    SUFFIX = 'Hz'
+
 class R(Component):
     '''
     Wrapper class for resistor values.
@@ -193,7 +203,7 @@ class C(Component):
     SUFFIX = 'F'
 
     def reactance(self, Fo):
-        return R(1 / (self.w(Fo) * self.value))
+        return R(1 / (Fo.w * self.value))
     
     def series(self, components):
         return C(self._inverse_sum(components))
@@ -201,14 +211,30 @@ class C(Component):
     def parallel(self, components):
         return C(self._sum(components))
 
+    def series2parallel(self, Rs, Fo):
+        Q = 1 / (Fo.w * float(Rs) * self.value)
+        Rp = R(float(Rs) * (1 + (Q**2)))
+        Cp = C(self.value * (Q**2 / (1 + Q**2)))
+        return (Rp, Cp)
+
+    def parallel2series(self, Rp, Fo):
+        Q = Fo.w * self.value * float(Rp)
+        Rs = R(float(Rp) * (1 / (1 + Q**2)))
+        Cs = C(self.value * ((1 + Q**2) / Q**2))
+        return (Rs, Cs)
+
 class L(Component):
     '''
     Wrapper class for inductance values.
     '''
     SUFFIX = 'H'
 
+    def Q(self, Fo):
+        Xl = self.reactance(Fo)
+        return (Xl.value / self.parasitics.Rs.value)
+
     def reactance(self, Fo):
-        return R(self.w(Fo) * self.value)
+        return R(Fo.w * self.value)
     
     def series(self, components):
         return L(self._sum(components))
@@ -216,14 +242,37 @@ class L(Component):
     def parallel(self, components):
         return L(self._inverse_sum(components))
 
+    def series2parallel(self, Rs, Fo):
+        Q = self.reactance(Fo).value / float(Rs)
+        Rp = R(((Q**2) + 1) * float(Rs))
+        Xp = Rp.value / Q
+        Lp = L(Xp / Fo.w)
+        return (Rp, Lp)
+
+    def parallel2series(self, Rp, Fo):
+        Xp = self.value * Fo.w
+        Q = float(Rp) / Xp
+        Rs = R(float(Rp) / ((Q**2) + 1))
+        Ls = L((Q * float(Rs)) / Fo.w)
+        return (Rs, Ls)
+
+class Parasitics(Container):
+    '''
+    Class container describing parasitic elements of a component.
+    '''
+    DEFAULTS = {
+            'Rs' : R(0),
+            'Rp' : R(0),
+            'Ls' : L(0),
+            'Lp' : L(0),
+            'Cs' : C(0),    
+            'Cp' : C(0),    
+    }
+
 class Circuit(object):
     '''
     Class for calculating component values in circuits.
     '''
-
-    @staticmethod
-    def w(Fo):
-        return Component(Component().w(Fo))
 
     @staticmethod 
     def parallel(*components):
@@ -239,21 +288,64 @@ class Circuit(object):
         
         return components[0].series(components)
 
-    @staticmethod 
-    def series2parallel(Rs, Cs, Fo):
-        Q = 1 / (self.w(Fo) * float(Rs) * float(Cs))
-        Rp = R(float(Rs) * (1 + (Q**2)))
-        Cp = C(float(Cs) * (Q**2 / (1 + Q**2)))
-        return (Rp, Cp)
-
-    @staticmethod 
-    def parallel2series(Rp, Cp, Fo):
-        Q = self.w(Fo) * float(Cp.value) * float(Rp.value)
-        Rs = R(float(Rp) * (1 / (1 + Q**2)))
-        Cs = C(float(Cp) * ((1 + Q**2) / Q**2))
-        return (Rs, Cs)
-
     @staticmethod
     def divider(R1, R2, Vcc):
         return V(Vcc.value * (R2.value / (R1.value + R2.value)))
+
+    @staticmethod
+    def series2parallel(Rs, Xs, Fo):
+        return Xs.series2parallel(Rs, Fo)
+
+    @staticmethod
+    def parallel2series(Rp, Xp, Fo):
+        return Xp.parallel2series(Rp, Fo)
+
+class TunedCircuit(object):
+
+    @staticmethod
+    def Q(Rs, Rl, C, L, Fo):
+        '''
+        Calculates the Q of a parallel tuned circuit with source and load impedances.
+
+        @Rs - Source impedance.
+        @Rl - Load impedance.
+        @Ct - Capacitor.
+        @Lt - Inductor.
+        @Fo - Frequency.
+
+        Returns the calculated Q.
+        '''
+        Rp = Circuit.parallel(Rs, Rl)
+        Xp = Circuit.parallel(C.reactance(Fo), L.reactance(Fo))
+        return (Rp/Xp)
+
+    @staticmethod
+    def resonance(L, C):
+        '''
+        Calculate the resonant frequency of L and C.
+
+        @L - Inductor.
+        @C - Capacitor.
+
+        Returns an F object.
+        '''
+        return F(1 / (2*math.pi*math.sqrt(L.value*C.value)))
+
+    @staticmethod
+    def LC(Rs, Rl, Q, Fo):
+        '''
+        Calculate the required L and C values for a tuned circuit of a given Q.
+
+        @Rs - Source impedance
+        @Rl - Load impedance
+        @Q  - Desired Q
+        @Fo - Turned circuit frequency
+
+        Returns a tuple of (L, C).
+        '''
+        Rp = Circuit.parallel(Rs, Rl).value
+        Xp = (Rp / Q)
+        Lt = L(Xp / Fo.w)
+        Ct = C((1/Fo.w) / Xp)
+        return (Lt, Ct)
 

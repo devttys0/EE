@@ -5,10 +5,10 @@ from LCR import *
 Fo = F('15MHz')
 
 Co = C('5pf')
-C2 = C('30pf')
-C1 = C('180pf')
+C2 = C('1000pf')
+C1 = C('1000pf')
 
-R1 = R(0)
+R1 = R(100)
 Rx = R(10000)
 Ri = R(5200)
 Ro = Circuit.series(R1, Rx)
