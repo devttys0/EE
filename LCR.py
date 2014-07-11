@@ -332,20 +332,35 @@ class TunedCircuit(object):
         return F(1 / (2*math.pi*math.sqrt(L.value*C.value)))
 
     @staticmethod
-    def LC(Rs, Rl, Q, Fo):
+    def LC(Rs, Rl, Fo, F3db):
         '''
         Calculate the required L and C values for a tuned circuit of a given Q.
 
-        @Rs - Source impedance
-        @Rl - Load impedance
-        @Q  - Desired Q
-        @Fo - Turned circuit frequency
+        @Rs   - Source impedance
+        @Rl   - Load impedance
+        @Fo   - Tuned circuit center frequency
+        @F3db - Desired 3db bandwidth
 
         Returns a tuple of (L, C).
         '''
+        Q = Fo.value / F3db.value
         Rp = Circuit.parallel(Rs, Rl).value
         Xp = (Rp / Q)
         Lt = L(Xp / Fo.w)
         Ct = C((1/Fo.w) / Xp)
         return (Lt, Ct)
 
+class Amidon(L):
+
+    def _init(self):
+        uH = self.value / .000001
+        self.N = 100 * math.sqrt((uH / self.AL))
+        self.AWG = 0
+
+    def turns(self):
+        return (self.N, self.AWG)
+
+class T506(Amidon):
+
+    AL = 40
+    DIAMETER = .3
