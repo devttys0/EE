@@ -51,13 +51,42 @@ class CrystalFinder(object):
 
         return frequencies
 
+    def mouser_crystals(self):
+        frequencies = []
+        html = self.wget("http://www.mouser.com/Passive-Components/Frequency-Control-Timing-Devices/Crystals/_/N-6zu9fZscv7")
+
+        try:
+            select_options = html.split('id="ctl00_ContentMain_uc5_AttributeCategoryList_ctl01_688437">')[1].split("</select")[0].split('\n')
+            for option in select_options:
+                if '>' in option:
+                    frequency = option.split('>')[1]
+                    if 'MHz' in frequency:
+                        freq = float(frequency.split('MHz')[0])
+                    elif 'MHZ' in frequency:
+                        freq = float(frequency.split('MHZ')[0])
+                    elif 'kHz' in frequency:
+                        freq = float(frequency.split('kHz')[0])
+                    elif 'kHZ' in frequency:
+                        freq = float(frequency.split('kHZ')[0])
+                    elif 'KHz' in frequency:
+                        freq = float(frequency.split('KHz')[0])
+                    else:
+                        raise Exception("Unknown frequency option: '%s'" % frequency)
+
+                    frequencies.append(freq)
+        except Exception as e:
+            raise e
+
+        return frequencies
+
     def list_available_crystals(self):
         crystals = {}
 
-        for crystal in self.digikey_crystals():
+        for crystal in self.digikey_crystals() + self.mouser_crystals():
             for i in [1, 3, 5]:
                 xtal = Crystal(crystal, i)
-                crystals[xtal.frequency] = xtal
+                if not crystals.has_key(xtal.frequency):
+                    crystals[xtal.frequency] = xtal
 
         return crystals
 
@@ -90,6 +119,7 @@ class CrystalFinder(object):
                 f_plus = f1 + f2
                 if self.deviation_ok(f_plus) and (f1, f2) not in done_sum_pairs:
                     done_sum_pairs.append((f1, f2))
+                    done_sum_pairs.append((f2, f1))
                     print "%f + %f = %f; use %f (%d overtone) and %f (%d overtone)" % (f1,
                                                                                        f2,
                                                                                        f_plus,
@@ -127,7 +157,7 @@ except Exception:
 try:
     max_deviation = float(sys.argv[2])
 except IndexError:
-    max_deviation = 0.01
+    max_deviation = 0.0
 except Exception:
     usage()
 
