@@ -65,11 +65,11 @@ class CrystalFinder(object):
                     elif 'MHZ' in frequency:
                         freq = float(frequency.split('MHZ')[0])
                     elif 'kHz' in frequency:
-                        freq = float(frequency.split('kHz')[0])
+                        freq = float(frequency.split('kHz')[0]) / 1000.0
                     elif 'kHZ' in frequency:
-                        freq = float(frequency.split('kHZ')[0])
+                        freq = float(frequency.split('kHZ')[0]) / 1000.0
                     elif 'KHz' in frequency:
-                        freq = float(frequency.split('KHz')[0])
+                        freq = float(frequency.split('KHz')[0]) / 1000.0
                     else:
                         raise Exception("Unknown frequency option: '%s'" % frequency)
 
