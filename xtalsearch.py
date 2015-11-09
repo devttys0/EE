@@ -3,14 +3,16 @@
 # desired frequency within the specified error range.
 
 import sys
+import getopt
 import urllib2
 
 class Crystal(object):
 
-    def __init__(self, fundamental=0.0, overtone=1):
-        self.overtone = overtone
+    def __init__(self, fundamental=0.0, harmonic=1):
+        self.harmonic = harmonic
         self.fundamental = fundamental
-        self.frequency = self.fundamental * self.overtone
+        self.frequency = self.fundamental * self.harmonic
+        self.id = hash("%.5f*%d=%.5f" % (self.fundamental, self.harmonic, self.frequency))
 
 class CrystalMatch(object):
     def __init__(self, crystals, operator=""):
@@ -18,9 +20,10 @@ class CrystalMatch(object):
         self.operator = operator
 
 class CrystalFinder(object):
-    def __init__(self, desired_frequency, max_deviation):
+    def __init__(self, desired_frequency, max_deviation, harmonics):
         self.desired_frequency = desired_frequency
         self.max_deviation = max_deviation
+        self.harmonics = harmonics
         self.crystals = self.list_available_crystals()
 
     def wget(self, url, post=None):
@@ -53,6 +56,10 @@ class CrystalFinder(object):
 
     def mouser_crystals(self):
         frequencies = []
+
+        # TODO: Mouser page parsing is broken.
+        return frequencies
+
         html = self.wget("http://www.mouser.com/Passive-Components/Frequency-Control-Timing-Devices/Crystals/_/N-6zu9fZscv7")
 
         try:
@@ -83,16 +90,17 @@ class CrystalFinder(object):
         crystals = {}
 
         for crystal in self.digikey_crystals() + self.mouser_crystals():
-            for i in [1, 3, 5]:
+            for i in self.harmonics:
                 xtal = Crystal(crystal, i)
-                if not crystals.has_key(xtal.frequency):
-                    crystals[xtal.frequency] = xtal
+                # Show preference to lower-order harmonics
+                if not crystals.has_key(xtal.id):
+                    crystals[xtal.id] = xtal
 
         return crystals
 
     def deviation_ok(self, freq):
-        low = self.desired_frequency - freq
-        high = freq - self.desired_frequency
+        low = round(self.desired_frequency - freq, 6)
+        high = round(freq - self.desired_frequency, 6)
 
         return (low >= 0 and low <= self.max_deviation) or (high >= 0 and high <= self.max_deviation)
 
@@ -104,7 +112,7 @@ class CrystalFinder(object):
             for i in [1, 2, 4, 8]:
                 div_freq = crystal.frequency / i
                 if self.deviation_ok(div_freq):
-                    print "%f / %d = %f; use %f (%d overtone)" % (crystal.frequency, i, div_freq, crystal.fundamental, crystal.overtone)
+                    print "%f / %d = %f; use %f (%d harmonic)" % (crystal.frequency, i, div_freq, crystal.fundamental, crystal.harmonic)
 
     def find_sum_pairs(self, crystals=None):
         done_sum_pairs = []
@@ -113,55 +121,70 @@ class CrystalFinder(object):
         if not crystals:
             crystals = self.crystals
 
-        for crystal in crystals.keys():
-            f1 = crystal
-            for f2 in crystals.keys():
+        for xtal1 in crystals.values():
+            f1 = xtal1.frequency
+            for xtal2 in crystals.values():
+                f2 = xtal2.frequency
                 f_plus = f1 + f2
                 if self.deviation_ok(f_plus) and (f1, f2) not in done_sum_pairs:
                     done_sum_pairs.append((f1, f2))
                     done_sum_pairs.append((f2, f1))
-                    print "%f + %f = %f; use %f (%d overtone) and %f (%d overtone)" % (f1,
+                    print "%f + %f = %f; use %f (%d harmonic) and %f (%d harmonic)" % (f1,
                                                                                        f2,
                                                                                        f_plus,
-                                                                                       self.crystals[f1].fundamental,
-                                                                                       self.crystals[f1].overtone,
-                                                                                       self.crystals[f2].fundamental,
-                                                                                       self.crystals[f2].overtone)
+                                                                                       xtal1.fundamental,
+                                                                                       xtal1.harmonic,
+                                                                                       xtal2.fundamental,
+                                                                                       xtal2.harmonic)
 
                 if f1 > f2:
                     f_minus = f1 - f2
-                    big = f1
-                    little = f2
+                    big = xtal1
+                    little = xtal2
                 else:
                     f_minus = f2 - f1
-                    big = f2
-                    little = f1
-                if self.deviation_ok(f_minus) and (big, little) not in done_min_pairs:
-                    done_min_pairs.append((big, little))
-                    print "%f - %f = %f; use %f (%d overtone) and %f (%d overtone)" % (big,
-                                                                                       little,
+                    big = xtal2
+                    little = xtal1
+                if self.deviation_ok(f_minus) and (big.id, little.id) not in done_min_pairs:
+                    done_min_pairs.append((big.id, little.id))
+                    print "%f - %f = %f; use %f (%d harmonic) and %f (%d harmonic)" % (big.frequency,
+                                                                                       little.frequency,
                                                                                        f_minus,
-                                                                                       self.crystals[big].fundamental,
-                                                                                       self.crystals[big].overtone,
-                                                                                       self.crystals[little].fundamental,
-                                                                                       self.crystals[little].overtone)
+                                                                                       big.fundamental,
+                                                                                       big.harmonic,
+                                                                                       little.fundamental,
+                                                                                       little.harmonic)
 
 def usage():
-    print "Usage: %s <frequency, in MHz> [max deviation, in MHz]" % sys.argv[0]
+    print "Usage: %s -f <frequency, in MHz> -d <max deviation, in MHz> -h <comma,separated,harmonics>" % sys.argv[0]
     sys.exit(1)
 
-try:
-    desired_frequency = float(sys.argv[1])
-except Exception:
-    usage()
-try:
-    max_deviation = float(sys.argv[2])
-except IndexError:
-    max_deviation = 0.0
-except Exception:
-    usage()
 
-search = CrystalFinder(desired_frequency, max_deviation)
-search.find_divisors()
-search.find_sum_pairs()
+if __name__ == '__main__':
+    harmonics = [1, 2, 3, 4, 5]
+    max_deviation = 0.0
+    desired_frequency = 0.0
+
+    try:
+        (opts, args) = getopt.getopt(sys.argv[1:], "f:d:h:", ["frequency=", "deviation=", "harmonics="])
+    except getopt.GetoptError as e:
+        print e
+        usage()
+
+    for (opt, arg) in opts:
+        if opt == "-f":
+            desired_frequency = float(arg)
+        elif opt == "-d":
+            max_deviation = float(arg)
+        elif opt == "-h":
+            harmonics = []
+            for h in arg.split(','):
+                harmonics.append(int(h))
+
+    if desired_frequency == 0.0:
+        usage()
+
+    search = CrystalFinder(desired_frequency, max_deviation, harmonics)
+    search.find_divisors()
+    search.find_sum_pairs()
 
