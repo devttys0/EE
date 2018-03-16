@@ -31,6 +31,17 @@ class CrystalFinder(object):
         data = urllib2.urlopen(req).read()
         return data
 
+    def harmonic2str(self, i):
+        if i == 1:
+            harmonic = "1st"
+        elif i == 2:
+            harmonic = "2nd"
+        elif i == 3:
+            harmonic = "3rd"
+        else:
+            harmonic = "%dth" % i
+        return harmonic
+
     def digikey_crystals(self):
         frequencies = []
         # Only get crystals that are in stock
@@ -121,7 +132,7 @@ class CrystalFinder(object):
             for i in [1, 2, 4, 8]:
                 div_freq = crystal.frequency / i
                 if self.deviation_ok(div_freq):
-                    print "%f / %d = %f; use %f (%d harmonic)" % (crystal.frequency, i, div_freq, crystal.fundamental, crystal.harmonic)
+                    print "%f / %d = %f; use %f (%s harmonic)" % (crystal.frequency, i, div_freq, crystal.fundamental, self.harmonic2str(crystal.harmonic))
 
     def find_sum_pairs(self, crystals=None):
         done_sum_pairs = []
@@ -138,13 +149,13 @@ class CrystalFinder(object):
                 if self.deviation_ok(f_plus) and (f1, f2) not in done_sum_pairs:
                     done_sum_pairs.append((f1, f2))
                     done_sum_pairs.append((f2, f1))
-                    print "%f + %f = %f; use %f (%d harmonic) and %f (%d harmonic)" % (f1,
+                    print "%f + %f = %f; use %f (%s harmonic) and %f (%s harmonic)" % (f1,
                                                                                        f2,
                                                                                        f_plus,
                                                                                        xtal1.fundamental,
-                                                                                       xtal1.harmonic,
+                                                                                       self.harmonic2str(xtal1.harmonic),
                                                                                        xtal2.fundamental,
-                                                                                       xtal2.harmonic)
+                                                                                       self.harmonic2str(xtal2.harmonic))
 
                 if f1 > f2:
                     f_minus = f1 - f2
@@ -156,13 +167,13 @@ class CrystalFinder(object):
                     little = xtal1
                 if self.deviation_ok(f_minus) and (big.id, little.id) not in done_min_pairs:
                     done_min_pairs.append((big.id, little.id))
-                    print "%f - %f = %f; use %f (%d harmonic) and %f (%d harmonic)" % (big.frequency,
+                    print "%f - %f = %f; use %f (%s harmonic) and %f (%s harmonic)" % (big.frequency,
                                                                                        little.frequency,
                                                                                        f_minus,
                                                                                        big.fundamental,
-                                                                                       big.harmonic,
+                                                                                       self.harmonic2str(big.harmonic),
                                                                                        little.fundamental,
-                                                                                       little.harmonic)
+                                                                                       self.harmonic2str(little.harmonic))
 
 def usage():
     print "Usage: %s -f <frequency, in MHz> -d <max deviation, in MHz> -h <comma,separated,harmonics>" % sys.argv[0]
