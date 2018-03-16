@@ -33,23 +33,30 @@ class CrystalFinder(object):
 
     def digikey_crystals(self):
         frequencies = []
-        # Only get crystals that are in stock and fundamental mode
-        html = self.wget("http://www.digikey.com/product-search/en/crystals-and-oscillators/crystals?stock=1&pv538=2")
+        # Only get crystals that are in stock
+        html = self.wget("https://www.digikey.com/products/en/crystals-oscillators-resonators/crystals/171?k=crystals&k=&pkeyword=crystals&stock=1")
 
         try:
-            select_options = html.split("<td align=center><select multiple size=10 name=pv139>")[1].split("</select>")[0].split('\n')
+            select_options = html.split('data-rfsib="rfControl2150">')[1].split("</select>")[0].split('\n')
             for option in select_options:
-                if '>' in option:
-                    frequency = option.split('>')[1]
+                option = option.strip()
+                if option and '>' not in option:
+                    frequency = option.strip()
                     if frequency.endswith('MHz'):
                         freq = float(frequency.split('MHz')[0])
                     elif frequency.endswith('kHz'):
                         freq = float(frequency.split('kHz')[0]) / 1000.0
+                    elif frequency == '-':
+                        freq = None
                     else:
-                        raise Exception("Unknown frequency option: '%s'" % frequency)
+                        #raise Exception("Unknown frequency option: '%s'" % frequency)
+                        print "WARNING: Unknown frequency option: '%s'" % frequency
+                        continue
 
-                    frequencies.append(freq)
+                    if freq is not None:
+                        frequencies.append(freq)
         except Exception as e:
+            print "Caught exception processing line: [%s]" % html
             raise e
 
         return frequencies
@@ -78,7 +85,9 @@ class CrystalFinder(object):
                     elif 'KHz' in frequency:
                         freq = float(frequency.split('KHz')[0]) / 1000.0
                     else:
-                        raise Exception("Unknown frequency option: '%s'" % frequency)
+                        #raise Exception("Unknown frequency option: '%s'" % frequency)
+                        print "WARNING: Unknown frequency option: '%s'" % frequency
+                        continue
 
                     frequencies.append(freq)
         except Exception as e:
